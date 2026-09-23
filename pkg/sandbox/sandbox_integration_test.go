@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -105,7 +106,7 @@ func startMounted(t *testing.T, cmd *exec.Cmd, target string) <-chan struct{} {
 	t.Helper()
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
-	must(t, cmd.Start())
+	startDying(t, cmd)
 	exited := make(chan struct{})
 	go func() {
 		_ = cmd.Wait()
@@ -133,6 +134,17 @@ func startMounted(t *testing.T, cmd *exec.Cmd, target string) <-chan struct{} {
 		time.Sleep(20 * time.Millisecond)
 	}
 	return exited
+}
+
+// startDying starts cmd to be killed along with the test. An orphaned sandbox
+// would keep a fuzz worker's pipes to its coordinator open, and hang it.
+func startDying(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Pdeathsig = unix.SIGKILL
+	must(t, cmd.Start())
 }
 
 func must(t *testing.T, err error) {

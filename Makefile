@@ -18,9 +18,28 @@ dist:
 	done
 	cd dist && sha256sum fuse-sandbox-* > SHA256SUMS
 
+FUZZTIME ?= 30s
+
+.PHONY: fuzz
+fuzz:
+	go test -run '^$$' -fuzz FuzzParse -fuzztime $(FUZZTIME) ./cmd/fuse-sandbox
+
 # Mount tests need root, /dev/fuse and a Linux kernel, so they run in a privileged
 # container. On a non-Linux machine that container is inside colima or another VM.
+MOUNTTEST = docker run --rm --privileged -v $(CURDIR):/src -w /src -e GOFLAGS=-buildvcs=false \
+	golang:1.27-alpine go test -tags mounttest
+
 .PHONY: test-mount
 test-mount:
-	docker run --rm --privileged -v $(CURDIR):/src -w /src -e GOFLAGS=-buildvcs=false \
-		golang:1.27-alpine go test -tags mounttest -count=1 -v ./...
+	$(MOUNTTEST) -count=1 -v ./...
+
+# Where the container keeps its corpus, so the next run builds on it. The default
+# is Go's own on Linux.
+FUZZCACHE ?= $(HOME)/.cache/go-build/fuzz
+
+.PHONY: fuzz-mount
+fuzz-mount:
+	mkdir -p $(FUZZCACHE)
+	docker run --rm --privileged -v $(CURDIR):/src -v $(FUZZCACHE):/root/.cache/go-build/fuzz -w /src \
+		-e GOFLAGS=-buildvcs=false golang:1.27-alpine \
+		go test -tags mounttest -run '^$$' -fuzz FuzzSandbox -fuzztime $(FUZZTIME) ./pkg/sandbox

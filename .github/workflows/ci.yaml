@@ -44,6 +44,29 @@ jobs:
         with:
           version: ${{ steps.lint-version.outputs.version }}
 
+  fuzz:
+    runs-on: ubuntu-latest
+    # Fuzzing unchanged code finds less each time; the daily run is for CVEs.
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # Fuzzing is cumulative: each run starts from the corpus of the ones before.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: ${{ github.job }}-${{ github.run_id }}
+          restore-keys: ${{ github.job }}-
+      - run: make fuzz
+      # Commit a failing input to testdata/fuzz to keep it as a regression test.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.job }}-failing-input
+          path: "**/testdata/fuzz/"
+
   security:
     runs-on: ubuntu-latest
     steps:
@@ -74,6 +97,27 @@ jobs:
       - uses: actions/checkout@v7
       - run: test -c /dev/fuse || (echo "runner has no /dev/fuse" >&2; exit 1)
       - run: make test-mount
+
+  fuzz-mount:
+    runs-on: ubuntu-latest
+    # Fuzzing unchanged code finds less each time; the daily run is for CVEs.
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v7
+      - run: test -c /dev/fuse || (echo "runner has no /dev/fuse" >&2; exit 1)
+      # Fuzzing is cumulative: each run starts from the corpus of the ones before.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: ${{ github.job }}-${{ github.run_id }}
+          restore-keys: ${{ github.job }}-
+      - run: make fuzz-mount
+      # Commit a failing input to testdata/fuzz to keep it as a regression test.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.job }}-failing-input
+          path: "**/testdata/fuzz/"
 
   image:
     runs-on: ubuntu-latest
