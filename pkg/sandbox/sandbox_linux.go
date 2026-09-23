@@ -23,14 +23,11 @@ func Command(cfg *Config) (*exec.Cmd, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	noEnv := *cfg
-	noEnv.Env = nil
-	spec, err := encodeSpec(&noEnv)
+	spec, err := encodeSpec(cfg)
 	if err != nil {
 		return nil, err
 	}
 	cmd := exec.Command("/proc/self/exe", initArg, spec)
-	cmd.Env = cfg.Env
 	flags := uintptr(unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWIPC | unix.CLONE_NEWUTS | unix.CLONE_NEWCGROUP)
 	if !cfg.ShareNet {
 		flags |= unix.CLONE_NEWNET

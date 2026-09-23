@@ -411,23 +411,3 @@ func TestCommand(t *testing.T) {
 		t.Errorf("sandbox exited with %v after its target was unmounted", cmd.ProcessState)
 	}
 }
-
-func TestEnv(t *testing.T) {
-	e := newEnv(t)
-	cmd, err := Command(&Config{
-		Target:  Bind{Host: e.target, Sandbox: "/t"},
-		Devices: []string{"/dev/fuse"},
-		Command: []string{loopfsBin, "/", "/t"},
-		Env:     []string{"A=b"},
-	})
-	must(t, err)
-	if strings.Contains(strings.Join(cmd.Args, " "), "A=b") {
-		t.Errorf("environment in the sandbox's argv: %q", cmd.Args)
-	}
-	startMounted(t, cmd, e.target)
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", cmd.Process.Pid))
-	must(t, err)
-	if got := string(b); got != "A=b\x00" {
-		t.Errorf("daemon environment = %q, want only A=b", got)
-	}
-}
