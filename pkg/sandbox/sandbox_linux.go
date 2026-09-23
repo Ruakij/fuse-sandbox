@@ -78,7 +78,7 @@ func Run(cfg *Config) (int, error) {
 func enter(cfg *Config) error {
 	var mounts []rootfs.Mount
 	for _, b := range cfg.Binds {
-		attr := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV)
+		attr := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV | unix.MOUNT_ATTR_NOEXEC)
 		if b.ReadOnly {
 			attr |= unix.MOUNT_ATTR_RDONLY
 		}

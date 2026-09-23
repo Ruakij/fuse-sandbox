@@ -37,7 +37,7 @@ path propagating: the target.
 3. Each host path is opened with `openat2(RESOLVE_NO_SYMLINKS)` and the mount is
    cloned from that file descriptor, so what gets bound is the inode that was
    checked, not whatever the path points at a moment later. Binds are
-   `nosuid,nodev` and recursive, and later host submounts still propagate in.
+   `nosuid,nodev,noexec` and recursive, and later host submounts still propagate in.
 4. An empty tmpfs becomes the new root with the clones attached, and is made
    read-only after `pivot_root`. Of `proc` it holds only the daemon's own
    `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their

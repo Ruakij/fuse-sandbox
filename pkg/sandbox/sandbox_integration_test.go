@@ -10,10 +10,12 @@ package sandbox
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -76,6 +78,27 @@ func (e *env) args(extra ...string) []string {
 func (e *env) start(t *testing.T, extra ...string) <-chan struct{} {
 	t.Helper()
 	return startMounted(t, exec.Command(sandboxBin, e.args(extra...)...), e.target)
+}
+
+// daemon starts the sandbox and returns the daemon's host pid.
+func (e *env) daemon(t *testing.T, extra ...string) int {
+	t.Helper()
+	cmd := exec.Command(sandboxBin, e.args(extra...)...)
+	startMounted(t, cmd, e.target)
+	ents, err := os.ReadDir("/proc")
+	must(t, err)
+	for _, d := range ents {
+		b, err := os.ReadFile(filepath.Join("/proc", d.Name(), "stat"))
+		if err != nil {
+			continue
+		}
+		if f := strings.Fields(string(b[bytes.LastIndexByte(b, ')')+1:])); f[1] == strconv.Itoa(cmd.Process.Pid) {
+			pid, _ := strconv.Atoi(d.Name())
+			return pid
+		}
+	}
+	t.Fatal("no daemon among the sandbox's children")
+	return 0
 }
 
 func startMounted(t *testing.T, cmd *exec.Cmd, target string) <-chan struct{} {
@@ -175,6 +198,22 @@ func TestSandboxHoldsOnlyWhatIsBound(t *testing.T) {
 	if got := names(t, filepath.Join(e.target, "proc", "self")); !slices.Equal(got, []string{"fd"}) {
 		t.Errorf("sandbox /proc/self = %v, want only fd", got)
 	}
+}
+
+func TestBindsAreNoexec(t *testing.T) {
+	e := newEnv(t)
+	pid := e.daemon(t, "-bind", e.data+":/data")
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/mountinfo", pid))
+	must(t, err)
+	for _, l := range strings.Split(string(b), "\n") {
+		if f := strings.Fields(l); len(f) > 5 && f[4] == "/data" {
+			if !slices.Contains(strings.Split(f[5], ","), "noexec") {
+				t.Errorf("/data mounted %s, want noexec", f[5])
+			}
+			return
+		}
+	}
+	t.Error("no /data in the daemon's mountinfo")
 }
 
 func TestUnmountingTheTargetStopsTheSandbox(t *testing.T) {
