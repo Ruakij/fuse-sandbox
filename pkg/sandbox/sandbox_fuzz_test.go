@@ -99,9 +99,9 @@ func FuzzSandbox(f *testing.F) {
 		if refused {
 			return
 		}
-		wantOwnFDs(t, childOf(t, cmd.Process.Pid))
+		wantOwnFDs(t, cmd.Process.Pid)
 
-		want := []string{"bin", "dev", "proc", "run", "usr", strings.Split(target, "/")[1], strings.Split(loopfsBin, "/")[1]}
+		want := []string{"dev", "proc", strings.Split(target, "/")[1], strings.Split(loopfsBin, "/")[1]}
 		for _, b := range cfg.Binds {
 			want = append(want, strings.Split(b.Sandbox, "/")[1])
 		}

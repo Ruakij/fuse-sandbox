@@ -1,9 +1,8 @@
 // Package sandbox runs a FUSE daemon in an empty root that holds only the paths
 // bound into it, while its mount on the sandbox target propagates to the host.
 //
-// The sandbox is built by a re-executed copy of the calling program, which also
-// runs inside it, so a program using [Command] must be static and call [Init]
-// first thing in main.
+// The sandbox is built by a re-executed copy of the calling program, so a
+// program using [Command] must call [Init] first thing in main.
 package sandbox
 
 import (
@@ -43,59 +42,23 @@ type Config struct {
 	// Env is the daemon's environment; nil passes on the caller's. It reaches the
 	// sandbox as its environment, not in its argv, which any host user can read.
 	Env []string
-	// Fusermount are the sandbox paths of the fusermount stand-in, through which
-	// the daemon mounts the target. Each name must contain "fusermount". Nil
-	// means /usr/bin/fusermount3 and /bin/fusermount3, where libfuse, go-fuse
-	// and bazil.org/fuse look.
-	Fusermount []string
 }
 
-func (c *Config) fusermount() []string {
-	if len(c.Fusermount) == 0 {
-		return []string{"/usr/bin/fusermount3", "/bin/fusermount3"}
-	}
-	return c.Fusermount
-}
-
-const (
-	// initArg marks the re-executed child that builds the sandbox and supervises
-	// the daemon.
-	initArg = "__fuse-sandbox-init"
-	// daemonArg marks the supervisor's child, which becomes the daemon.
-	daemonArg = "__fuse-sandbox-daemon"
-	// sockPath is where the supervisor takes fusermount requests.
-	sockPath = "/run/fuse-sandbox.sock"
-)
+// initArg marks the re-executed child that builds the sandbox.
+const initArg = "__fuse-sandbox-init"
 
 // Always present: libfuse opens /dev/null on startup.
 var defaultDevices = []string{"/dev/null"}
 
-// Init runs the sandbox's part of the program if this process was started by
-// [Command] or is the fusermount stand-in, and returns otherwise. Call it before
-// anything else in main.
+// Init builds the sandbox and execs the daemon if this process was started by
+// [Command], and returns otherwise. Call it before anything else in main.
 func Init() {
-	if strings.Contains(filepath.Base(os.Args[0]), "fusermount") {
-		if err := fusermount(os.Args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "fusermount: %v\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-	if len(os.Args) != 3 {
-		return
-	}
-	var run func(*Config) error
-	switch os.Args[1] {
-	case initArg:
-		run = supervise
-	case daemonArg:
-		run = execDaemon
-	default:
+	if len(os.Args) != 3 || os.Args[1] != initArg {
 		return
 	}
 	cfg, err := decodeSpec(os.Args[2])
 	if err == nil {
-		err = run(cfg)
+		err = enter(cfg)
 	}
 	fmt.Fprintf(os.Stderr, "fuse-sandbox: %v\n", err)
 	os.Exit(1)
@@ -131,12 +94,7 @@ func (c *Config) Validate() error {
 
 	// The daemon binary is bound at its own path, so it must be static.
 	hosts := []string{c.Target.Host, c.Command[0]}
-	dsts := append([]string{c.Target.Sandbox, c.Command[0], "/proc", sockPath}, c.fusermount()...)
-	for _, f := range c.fusermount() {
-		if !strings.Contains(filepath.Base(f), "fusermount") {
-			return fmt.Errorf("fusermount path %q: name must contain \"fusermount\"", f)
-		}
-	}
+	dsts := []string{c.Target.Sandbox, c.Command[0], "/proc"}
 	for _, b := range c.Binds {
 		hosts = append(hosts, b.Host)
 		dsts = append(dsts, b.Sandbox)

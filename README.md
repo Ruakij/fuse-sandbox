@@ -12,9 +12,8 @@ fuse-sandbox \
   -- /usr/local/bin/mergerfs -f -o allow_other /a:/b /mnt
 ```
 
-The daemon sees `/a`, `/b`, `/mnt`, `/dev/fuse`, `/dev/null`, its own binary,
-`/proc/self/fd`, and fuse-sandbox as `fusermount3` with the socket it talks to.
-Its mount on `/mnt` appears at `/var/lib/app/mnt`.
+The daemon sees `/a`, `/b`, `/mnt`, `/dev/fuse`, `/dev/null`, its own binary and
+`/proc/self/fd`. Its mount on `/mnt` appears at `/var/lib/app/mnt`.
 
 ## Why
 
@@ -33,7 +32,7 @@ path propagating: the target.
 
 1. The process re-executes itself as PID 1 of new mount, PID, IPC, UTS and
    cgroup namespaces, and of an empty network namespace unless `-share-net` is
-   given. It stays there as the supervisor, with all capabilities.
+   given.
 2. It clones the target mount while that is still a peer of the host's shared
    mount, then makes every other mount a slave, so nothing mounted inside
    propagates out.
@@ -46,19 +45,11 @@ path propagating: the target.
    `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their
    files. The rest would let a daemon that follows a symlink into it read its own
    memory, environment and the host paths in its mountinfo.
-5. It closes every inherited file descriptor but stdio and starts the daemon,
-   which sets `no_new_privs`, cuts its capability bounding set to what a FUSE
-   daemon serving files as root uses (the file capabilities to act for callers
-   of any uid, not `CAP_SYS_ADMIN`), and execs.
-6. The daemon cannot mount, so it falls back to `fusermount3`, as libfuse,
-   go-fuse and bazil.org/fuse do. That is fuse-sandbox, which asks the
-   supervisor over `/run/fuse-sandbox.sock`. The supervisor mounts FUSE only on
-   the target, `nosuid,nodev`, with only the options a daemon needs
-   (`allow_other`, `default_permissions`, `max_read`, `fsname`, `subtype`,
-   `ro`, `noexec`, `noatime`), and passes the `/dev/fuse` fd back.
-7. Unmounting the target on the host ends the daemon, and with it the sandbox.
-   When the daemon ends, the supervisor unmounts what it mounted for it, reaps
-   what it left behind and exits with its status.
+5. It sets `no_new_privs`, cuts the capability bounding set to what a FUSE
+   daemon serving files as root uses (`CAP_SYS_ADMIN` to mount, the file
+   capabilities to act for callers of any uid), closes every inherited file
+   descriptor but stdio and execs the daemon, which becomes PID 1. Unmounting
+   the target on the host ends the daemon, and with it the sandbox.
 
 ## Requirements
 
@@ -66,10 +57,6 @@ path propagating: the target.
 - The host side of the target must be on a shared mount, e.g. `mount
   --make-rshared`, as kubelet's pods directory is.
 - The daemon binary must be static: it is the only file bound at its path.
-- The daemon must be able to mount through `fusermount3`. It finds it at
-  `/usr/bin/fusermount3` and `/bin/fusermount3`, so a daemon that searches
-  `PATH` needs one of those in it; `-fusermount` binds it elsewhere, e.g. at
-  `/usr/bin/fusermount` for libfuse 2.
 - All paths absolute, clean and without symlinks. Resolve them first; a symlink
   anywhere in a host path is refused.
 - libfuse daemons need `/dev/fuse` passed with `-dev`. `/dev/null` is always
@@ -77,11 +64,10 @@ path propagating: the target.
 
 ## Limits
 
-This contains a daemon that is tricked into reaching other paths. Against code
-execution in the daemon it is a boundary of namespaces and capabilities, not of
-users: the daemon stays root without `CAP_SYS_ADMIN`, so it cannot mount, but
-it can plant setuid files in what is bound read-write, and it shares the host
-kernel. FUSE passthrough, which needs `CAP_SYS_ADMIN`, is not available.
+This contains a daemon that is tricked into reaching other paths. It is not a
+boundary against code execution in the daemon: the daemon keeps root and
+`CAP_SYS_ADMIN`, which it needs to mount FUSE, and a root process with it has
+ways out of a mount namespace.
 
 Of the files fuse-sandbox inherits, only stdio reaches the daemon, and it stays
 reachable through `/proc/self/fd`, so stdio should be pipes or `/dev/null`, not
@@ -109,8 +95,6 @@ fuse-sandbox -target HOST:SANDBOX [flags] -- DAEMON [ARGS...]
   -bind HOST:SANDBOX     path to bind read-write, with its submounts (repeatable)
   -ro-bind HOST:SANDBOX  path to bind read-only, with its submounts (repeatable)
   -dev DEVICE            character device to bind at the same path (repeatable)
-  -fusermount PATH       where the daemon finds fusermount, instead of
-                         /usr/bin/fusermount3 and /bin/fusermount3 (repeatable)
   -share-net             keep the host's network, for daemons serving remote files
   -version               print the version and exit
 ```
@@ -128,7 +112,7 @@ that ended it.
 import "github.com/Ruakij/fuse-sandbox/pkg/sandbox"
 
 func main() {
-	sandbox.Init() // the sandbox's part when re-executed by Command, else returns
+	sandbox.Init() // builds the sandbox when re-executed by Command, else returns
 
 	cmd, err := sandbox.Command(&sandbox.Config{
 		Target:  sandbox.Bind{Host: "/var/lib/app/mnt", Sandbox: "/mnt"},
@@ -140,9 +124,6 @@ func main() {
 }
 ```
 
-The program runs inside the sandbox too, as `fusermount3`, so it must be static
-(`CGO_ENABLED=0`); `Command` refuses otherwise.
-
 `Command` leaves the daemon's lifetime to the caller: it survives the caller
 unless `cmd.SysProcAttr.Pdeathsig` is set. `cmd.ExtraFiles` do not reach the
 daemon. `Config.Env` sets its environment, which otherwise is the caller's. `Run` is the foreground behaviour of the command line tool.
@@ -153,7 +134,7 @@ daemon. `Config.Env` sets its environment, which otherwise is the caller's. `Run
 git config core.hooksPath .githooks  # gofmt, vet, tests and lint before each commit
 make build       # bin/fuse-sandbox
 make test-mount  # real sandboxes in a privileged container, needs Docker
-make fuzz        # command lines and mount options, FUZZTIME=30s by default
+make fuzz        # command lines, FUZZTIME=30s by default
 make fuzz-mount  # bind layouts through real sandboxes, like test-mount
 make dist        # release binaries and SHA256SUMS
 ```

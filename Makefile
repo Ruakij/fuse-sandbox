@@ -23,7 +23,6 @@ FUZZTIME ?= 30s
 .PHONY: fuzz
 fuzz:
 	go test -run '^$$' -fuzz FuzzParse -fuzztime $(FUZZTIME) ./cmd/fuse-sandbox
-	go test -run '^$$' -fuzz FuzzParseMountOptions -fuzztime $(FUZZTIME) ./pkg/sandbox
 
 # Mount tests need root, /dev/fuse and a Linux kernel, so they run in a privileged
 # container. On a non-Linux machine that container is inside colima or another VM.

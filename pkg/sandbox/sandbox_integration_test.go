@@ -87,11 +87,10 @@ func (e *env) daemon(t *testing.T, extra ...string) int {
 	t.Helper()
 	cmd := exec.Command(sandboxBin, e.args(extra...)...)
 	startMounted(t, cmd, e.target)
-	return childOf(t, childOf(t, cmd.Process.Pid))
+	return childOf(t, cmd.Process.Pid)
 }
 
-// childOf returns the pid of the only child of a process: the supervisor of the
-// sandbox command, or the daemon of the supervisor.
+// childOf returns the pid of the sandbox's daemon, its only child.
 func childOf(t *testing.T, sandbox int) int {
 	t.Helper()
 	ents, err := os.ReadDir("/proc")
@@ -106,7 +105,7 @@ func childOf(t *testing.T, sandbox int) int {
 			return pid
 		}
 	}
-	t.Fatalf("process %d has no child", sandbox)
+	t.Fatal("no daemon among the sandbox's children")
 	return 0
 }
 
@@ -243,7 +242,7 @@ func TestSandboxHoldsOnlyWhatIsBound(t *testing.T) {
 		t.Errorf("host gained %d mounts, want only the target", got)
 	}
 	binDir := strings.Split(strings.TrimPrefix(loopfsBin, "/"), "/")[0]
-	want := []string{binDir, "bin", "data", "dev", "proc", "run", "t", "usr"}
+	want := []string{binDir, "data", "dev", "proc", "t"}
 	slices.Sort(want)
 	if got := names(t, e.target); !slices.Equal(got, want) {
 		t.Errorf("sandbox root = %v, want %v", got, want)
@@ -252,9 +251,6 @@ func TestSandboxHoldsOnlyWhatIsBound(t *testing.T) {
 		t.Errorf("sandbox /dev = %v, want %v", got, want)
 	}
 	wantContent(t, filepath.Join(e.target, "data", "file"), "data")
-	if got, want := names(t, filepath.Join(e.target, "run")), []string{"fuse-sandbox.sock"}; !slices.Equal(got, want) {
-		t.Errorf("sandbox /run = %v, want %v", got, want)
-	}
 
 	if got := names(t, filepath.Join(e.target, "proc")); !slices.Equal(got, []string{"self"}) {
 		t.Errorf("sandbox /proc = %v, want only self", got)
@@ -288,17 +284,7 @@ func TestInheritedFDsStayOut(t *testing.T) {
 	cmd := exec.Command(sandboxBin, e.args()...)
 	cmd.ExtraFiles = []*os.File{secret}
 	startMounted(t, cmd, e.target)
-	supervisor := childOf(t, cmd.Process.Pid)
-	wantOwnFDs(t, childOf(t, supervisor))
-	// The supervisor holds some of Go's own, but none it inherited.
-	dir := fmt.Sprintf("/proc/%d/fd/", supervisor)
-	ents, err := os.ReadDir(dir)
-	must(t, err)
-	for _, ent := range ents {
-		if link, _ := os.Readlink(dir + ent.Name()); link == e.secret {
-			t.Errorf("supervisor holds fd %s on %s", ent.Name(), link)
-		}
-	}
+	wantOwnFDs(t, childOf(t, cmd.Process.Pid))
 }
 
 func TestNamespaces(t *testing.T) {
@@ -439,39 +425,9 @@ func TestEnv(t *testing.T) {
 		t.Errorf("environment in the sandbox's argv: %q", cmd.Args)
 	}
 	startMounted(t, cmd, e.target)
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", childOf(t, cmd.Process.Pid)))
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", cmd.Process.Pid))
 	must(t, err)
 	if got := string(b); got != "A=b\x00" {
 		t.Errorf("daemon environment = %q, want only A=b", got)
-	}
-}
-
-func TestOnlyTheTargetIsMounted(t *testing.T) {
-	e := newEnv(t)
-	args := []string{"-target", e.target + ":/t", "-dev", "/dev/fuse", "-bind", e.data + ":/data", "--", loopfsBin, "/", "/data"}
-	out, err := exec.Command(sandboxBin, args...).CombinedOutput()
-	if err == nil || !strings.Contains(string(out), "only /t may be mounted") {
-		t.Errorf("daemon mounting /data = %v, %s; want a refusal", err, out)
-	}
-	if isFUSE(e.target) || isFUSE(e.data) {
-		t.Error("mounted despite the refusal")
-	}
-}
-
-func TestDaemonExitUnmountsTheTarget(t *testing.T) {
-	e := newEnv(t)
-	must(t, unix.Kill(e.daemon(t), unix.SIGKILL))
-	for deadline := time.Now().Add(5 * time.Second); isFUSE(e.target); time.Sleep(20 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatal("target still mounted 5s after the daemon died")
-		}
-	}
-}
-
-func TestRefusesDynamicBinaries(t *testing.T) {
-	e := newEnv(t)
-	_, err := Command(&Config{Target: Bind{Host: e.target, Sandbox: "/t"}, Command: []string{"/bin/busybox"}})
-	if err == nil || !strings.Contains(err.Error(), "dynamically linked") {
-		t.Errorf("Command with busybox = %v, want a refusal", err)
 	}
 }
