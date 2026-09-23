@@ -43,8 +43,8 @@ path propagating: the target.
 4. An empty tmpfs becomes the new root with the clones attached, and is made
    read-only after `pivot_root`. Of `proc` it holds only the daemon's own
    `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their
-   files. The rest would let a daemon that follows a symlink into it read its own
-   memory, environment and the host paths in its mountinfo.
+   files, and with `-mountinfo` its `/proc/self/mountinfo`. The rest would let a
+   daemon that follows a symlink into it read its own memory and environment.
 5. It sets `no_new_privs`, cuts the capability bounding set to what a FUSE
    daemon serving files as root uses (`CAP_SYS_ADMIN` to mount, the file
    capabilities to act for callers of any uid), closes every inherited file
@@ -62,6 +62,10 @@ path propagating: the target.
   anywhere in a host path is refused.
 - libfuse daemons need `/dev/fuse` passed with `-dev`. `/dev/null` is always
   there.
+- Daemons that mount through `fusermount3`, like rclone (bazil.org/fuse) and
+  go-fuse without `DirectMount`, need it bound where they look, with `PATH` set
+  for those that search it. Running as root, it needs no setuid bit and no
+  `/etc/fuse.conf`.
 
 ## Limits
 
@@ -97,7 +101,21 @@ fuse-sandbox -target HOST:SANDBOX [flags] -- DAEMON [ARGS...]
   -ro-bind HOST:SANDBOX  path to bind read-only, with its submounts (repeatable)
   -dev DEVICE            character device to bind at the same path (repeatable)
   -share-net             keep the host's network, for daemons serving remote files
+  -mountinfo             add /proc/self/mountinfo, for daemons that check their mount
   -version               print the version and exit
+```
+
+`-mountinfo` shows the daemon the host paths of its binds, their devices and
+mount options, but no file contents. rclone needs it to unmount on exit, and
+`--allow-non-empty`, as it sees the target as a mount already:
+
+```sh
+env -i PATH=/usr/bin fuse-sandbox -target /mnt/remote:/mnt -share-net -mountinfo \
+  -ro-bind /opt/fusermount3:/usr/bin/fusermount3 -dev /dev/fuse \
+  -ro-bind /etc/ssl/certs:/etc/ssl/certs -ro-bind /etc/resolv.conf:/etc/resolv.conf \
+  -bind /var/lib/rclone:/rclone \
+  -- /usr/local/bin/rclone mount remote: /mnt --allow-non-empty \
+     --config /rclone/rclone.conf --cache-dir /rclone/cache
 ```
 
 The daemon inherits the environment; start fuse-sandbox under `env -i NAME=VALUE

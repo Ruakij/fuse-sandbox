@@ -108,7 +108,11 @@ func enter(cfg *Config) error {
 		Attr: unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV,
 	})
 
-	if err := rootfs.Enter(cfg.Target.Host, cfg.Target.Sandbox, mounts); err != nil {
+	var procSelf []string
+	if cfg.Mountinfo {
+		procSelf = append(procSelf, "mountinfo")
+	}
+	if err := rootfs.Enter(cfg.Target.Host, cfg.Target.Sandbox, mounts, procSelf); err != nil {
 		return err
 	}
 	if err := dropPrivileges(); err != nil {

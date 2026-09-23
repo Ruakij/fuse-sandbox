@@ -9,16 +9,17 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	cfg, err := parse(strings.Fields("-target /k/p:/t -bind /a:b:/a -ro-bind /c:/c -dev /dev/fuse -share-net -- /bin/d -f /t"))
+	cfg, err := parse(strings.Fields("-target /k/p:/t -bind /a:b:/a -ro-bind /c:/c -dev /dev/fuse -share-net -mountinfo -- /bin/d -f /t"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := &sandbox.Config{
-		Target:   sandbox.Bind{Host: "/k/p", Sandbox: "/t"},
-		Binds:    []sandbox.Bind{{Host: "/a:b", Sandbox: "/a"}, {Host: "/c", Sandbox: "/c", ReadOnly: true}},
-		Devices:  []string{"/dev/fuse"},
-		ShareNet: true,
-		Command:  []string{"/bin/d", "-f", "/t"},
+		Target:    sandbox.Bind{Host: "/k/p", Sandbox: "/t"},
+		Binds:     []sandbox.Bind{{Host: "/a:b", Sandbox: "/a"}, {Host: "/c", Sandbox: "/c", ReadOnly: true}},
+		Devices:   []string{"/dev/fuse"},
+		ShareNet:  true,
+		Mountinfo: true,
+		Command:   []string{"/bin/d", "-f", "/t"},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("parse = %+v, want %+v", cfg, want)

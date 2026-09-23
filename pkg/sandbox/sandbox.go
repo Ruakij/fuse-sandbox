@@ -36,6 +36,9 @@ type Config struct {
 	// ShareNet keeps the host's network namespace, for daemons serving remote
 	// files such as sshfs or rclone. Otherwise the daemon's is empty.
 	ShareNet bool
+	// Mountinfo adds the sandbox's /proc/self/mountinfo, for daemons like rclone
+	// that check whether they are mounted. It shows the host paths of the binds.
+	Mountinfo bool
 	// Command is the daemon and its arguments. The binary is bound at its own
 	// path with nothing else, so it must be static.
 	Command []string

@@ -38,6 +38,7 @@ func parse(args []string) (*sandbox.Config, error) {
 		return nil
 	})
 	fs.BoolVar(&cfg.ShareNet, "share-net", false, "keep the host's network, for daemons serving remote files")
+	fs.BoolVar(&cfg.Mountinfo, "mountinfo", false, "add /proc/self/mountinfo, which shows the binds' host paths, for daemons like rclone")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}

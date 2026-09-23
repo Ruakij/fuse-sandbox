@@ -260,6 +260,24 @@ func TestSandboxHoldsOnlyWhatIsBound(t *testing.T) {
 	}
 }
 
+func TestMountinfo(t *testing.T) {
+	e := newEnv(t)
+	pid := e.daemon(t, "-mountinfo")
+	if got := names(t, filepath.Join(e.target, "proc", "self")); !slices.Equal(got, []string{"fd", "mountinfo"}) {
+		t.Errorf("sandbox /proc/self = %v, want fd and mountinfo", got)
+	}
+	// Not through loopfs, which serves proc files by their size of 0.
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/root/proc/self/mountinfo", pid))
+	must(t, err)
+	var points []string
+	for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		points = append(points, strings.Fields(l)[4])
+	}
+	if !slices.Contains(points, "/t") || slices.Contains(points, e.target) {
+		t.Errorf("sandbox mountinfo has mountpoints %v, want the sandbox's", points)
+	}
+}
+
 // TestBindAttributes checks that binds hold no devices or setuid programs, but
 // may hold helpers the daemon runs, like fusermount3.
 func TestBindAttributes(t *testing.T) {
