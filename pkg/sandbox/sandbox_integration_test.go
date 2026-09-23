@@ -260,15 +260,18 @@ func TestSandboxHoldsOnlyWhatIsBound(t *testing.T) {
 	}
 }
 
-func TestBindsAreNoexec(t *testing.T) {
+// TestBindAttributes checks that binds hold no devices or setuid programs, but
+// may hold helpers the daemon runs, like fusermount3.
+func TestBindAttributes(t *testing.T) {
 	e := newEnv(t)
 	pid := e.daemon(t, "-bind", e.data+":/data")
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/mountinfo", pid))
 	must(t, err)
 	for _, l := range strings.Split(string(b), "\n") {
 		if f := strings.Fields(l); len(f) > 5 && f[4] == "/data" {
-			if !slices.Contains(strings.Split(f[5], ","), "noexec") {
-				t.Errorf("/data mounted %s, want noexec", f[5])
+			opts := strings.Split(f[5], ",")
+			if !slices.Contains(opts, "nosuid") || !slices.Contains(opts, "nodev") || slices.Contains(opts, "noexec") {
+				t.Errorf("/data mounted %s, want nosuid,nodev and exec", f[5])
 			}
 			return
 		}
