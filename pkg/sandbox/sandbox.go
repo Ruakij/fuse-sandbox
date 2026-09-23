@@ -39,6 +39,9 @@ type Config struct {
 	// Command is the daemon and its arguments. The binary is bound at its own
 	// path with nothing else, so it must be static.
 	Command []string
+	// Env is the daemon's environment; nil passes on the caller's. It reaches the
+	// sandbox as its environment, not in its argv, which any host user can read.
+	Env []string
 }
 
 // initArg marks the re-executed child that builds the sandbox.
@@ -104,7 +107,7 @@ func (c *Config) Validate() error {
 		dsts = append(dsts, d)
 	}
 
-	for _, s := range append(append(hosts, dsts...), c.Command...) {
+	for _, s := range slices.Concat(hosts, dsts, c.Command, c.Env) {
 		if strings.IndexByte(s, 0) >= 0 {
 			return fmt.Errorf("%q contains a NUL byte", s)
 		}
