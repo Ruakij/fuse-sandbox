@@ -78,9 +78,11 @@ func Run(cfg *Config) (int, error) {
 }
 
 // keptCaps are what a FUSE daemon serving files as root uses: mounting, and
-// acting on files for callers of any uid.
+// acting on files for callers of any uid. Not CAP_DAC_READ_SEARCH: DAC_OVERRIDE
+// covers reading, and with it open_by_handle_at reaches any inode on a bound
+// filesystem, outside the bind.
 var keptCaps = []int{
-	unix.CAP_SYS_ADMIN, unix.CAP_CHOWN, unix.CAP_DAC_OVERRIDE, unix.CAP_DAC_READ_SEARCH,
+	unix.CAP_SYS_ADMIN, unix.CAP_CHOWN, unix.CAP_DAC_OVERRIDE,
 	unix.CAP_FOWNER, unix.CAP_FSETID, unix.CAP_SETUID, unix.CAP_SETGID, unix.CAP_SETFCAP,
 	unix.CAP_MKNOD, unix.CAP_LINUX_IMMUTABLE, unix.CAP_LEASE, unix.CAP_SYS_RESOURCE, unix.CAP_SYS_NICE,
 }
