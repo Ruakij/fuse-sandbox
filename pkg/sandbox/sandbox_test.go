@@ -30,6 +30,8 @@ func TestValidate(t *testing.T) {
 		"bind over command":      func(c *Config) { c.Binds[0].Sandbox = "/bin" },
 		"bind over devices":      func(c *Config) { c.Binds[0].Sandbox = "/dev" },
 		"device outside of /dev": func(c *Config) { c.Devices = []string{"/tmp/x"} },
+		"NUL in sandbox path":    func(c *Config) { c.Binds[0].Sandbox = "/a\x00" },
+		"NUL in daemon argument": func(c *Config) { c.Command = append(c.Command, "\x00") },
 	} {
 		cfg := valid()
 		mutate(&cfg)

@@ -103,6 +103,11 @@ func (c *Config) Validate() error {
 		dsts = append(dsts, d)
 	}
 
+	for _, s := range append(append(hosts, dsts...), c.Command...) {
+		if strings.IndexByte(s, 0) >= 0 {
+			return fmt.Errorf("%q contains a NUL byte", s)
+		}
+	}
 	for _, p := range append(hosts, dsts...) {
 		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
 			return fmt.Errorf("path %q must be absolute and clean", p)
