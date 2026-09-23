@@ -28,6 +28,15 @@ build a private mount namespace too, but they cut mount propagation to the host,
 so the daemon's mount never leaves the sandbox. fuse-sandbox keeps exactly one
 path propagating: the target.
 
+Where a container runtime is at hand, a container does the same: Docker runs a
+FUSE daemon with `--cap-add SYS_ADMIN --device /dev/fuse` and a `:rshared`
+volume, and its image brings `fusermount3`, CA certificates and the like. In
+Kubernetes, though, a mount only propagates out of a pod with
+`mountPropagation: Bidirectional`, which requires a privileged container: every
+host device, every capability, no seccomp or AppArmor. fuse-sandbox runs inside
+such a pod and gives the daemon back an empty root. It also needs no runtime,
+for a mount tied to one process, such as a systemd unit.
+
 ## How it works
 
 1. The process re-executes itself as PID 1 of new mount, PID, IPC, UTS and
