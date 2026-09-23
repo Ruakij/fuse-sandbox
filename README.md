@@ -99,6 +99,9 @@ fuse-sandbox -target HOST:SANDBOX [flags] -- DAEMON [ARGS...]
   -version               print the version and exit
 ```
 
+The daemon inherits the environment; start fuse-sandbox under `env -i NAME=VALUE
+...` to pass it only what it needs.
+
 It forwards `SIGTERM`, `SIGINT` and `SIGHUP` to the daemon, takes the daemon down
 with it if killed, and exits with the daemon's exit code, or 128 plus the signal
 that ended it.
@@ -123,7 +126,7 @@ func main() {
 
 `Command` leaves the daemon's lifetime to the caller: it survives the caller
 unless `cmd.SysProcAttr.Pdeathsig` is set. `cmd.ExtraFiles` do not reach the
-daemon. `Run` is the foreground behaviour of the command line tool.
+daemon; `cmd.Env` becomes its environment. `Run` is the foreground behaviour of the command line tool.
 
 ## Development
 
