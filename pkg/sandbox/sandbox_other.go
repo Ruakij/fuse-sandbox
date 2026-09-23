@@ -13,4 +13,8 @@ func Command(*Config) (*exec.Cmd, error) { return nil, errUnsupported }
 
 func Run(*Config) (int, error) { return 0, errUnsupported }
 
-func enter(*Config) error { return errUnsupported }
+func supervise(*Config) error { return errUnsupported }
+
+func execDaemon(*Config) error { return errUnsupported }
+
+func fusermount([]string) error { return errUnsupported }

@@ -18,10 +18,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Strict direct mount: the sandbox has no fusermount to fall back to.
+	// Direct mount fails in the sandbox, and go-fuse falls back to fusermount.
 	server, err := fs.Mount(os.Args[2], root, &fs.Options{MountOptions: fuse.MountOptions{
 		AllowOther:         true,
-		DirectMountStrict:  true,
+		DirectMount:        true,
 		FsName:             "loopfs",
 		DisableReadDirPlus: true,
 	}})

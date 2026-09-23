@@ -37,6 +37,10 @@ func parse(args []string) (*sandbox.Config, error) {
 		cfg.Devices = append(cfg.Devices, v)
 		return nil
 	})
+	fs.Func("fusermount", "sandbox `path` where the daemon finds fusermount, instead of /usr/bin/fusermount3 and /bin/fusermount3 (repeatable)", func(v string) error {
+		cfg.Fusermount = append(cfg.Fusermount, v)
+		return nil
+	})
 	fs.BoolVar(&cfg.ShareNet, "share-net", false, "keep the host's network, for daemons serving remote files")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
