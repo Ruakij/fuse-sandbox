@@ -6,7 +6,9 @@
 package sandbox
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/base64"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -50,13 +52,31 @@ func Init() {
 	if len(os.Args) != 3 || os.Args[1] != initArg {
 		return
 	}
-	var cfg Config
-	err := json.Unmarshal([]byte(os.Args[2]), &cfg)
+	cfg, err := decodeSpec(os.Args[2])
 	if err == nil {
-		err = enter(&cfg)
+		err = enter(cfg)
 	}
 	fmt.Fprintf(os.Stderr, "fuse-sandbox: %v\n", err)
 	os.Exit(1)
+}
+
+// encodeSpec passes c to the child as gob, which unlike JSON keeps strings that
+// are not UTF-8, as Linux paths need not be, in base64, as argv holds no NUL.
+func encodeSpec(c *Config) (string, error) {
+	var b bytes.Buffer
+	if err := gob.NewEncoder(&b).Encode(c); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b.Bytes()), nil
+}
+
+func decodeSpec(spec string) (*Config, error) {
+	b, err := base64.StdEncoding.DecodeString(spec)
+	if err != nil {
+		return nil, err
+	}
+	var c Config
+	return &c, gob.NewDecoder(bytes.NewReader(b)).Decode(&c)
 }
 
 // Validate reports whether c is a sandbox that can be built.

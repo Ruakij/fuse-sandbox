@@ -1,6 +1,9 @@
 package sandbox
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestValidate(t *testing.T) {
 	valid := func() Config {
@@ -33,5 +36,22 @@ func TestValidate(t *testing.T) {
 		if cfg.Validate() == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func TestSpecKeepsNonUTF8(t *testing.T) {
+	cfg := &Config{
+		Target:  Bind{Host: "/k\xe5", Sandbox: "/t\xff"},
+		Binds:   []Bind{{Host: "/a\xc3", Sandbox: "/a", ReadOnly: true}},
+		Devices: []string{"/dev/fuse"},
+		Command: []string{"/bin/d", "-o", "x=\xfe"},
+	}
+	spec, err := encodeSpec(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decodeSpec(spec)
+	if err != nil || !reflect.DeepEqual(got, cfg) {
+		t.Errorf("decodeSpec = %+v, %v; want %+v", got, err, cfg)
 	}
 }
