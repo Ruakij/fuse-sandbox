@@ -30,7 +30,9 @@ path propagating: the target.
 
 ## How it works
 
-1. The process re-executes itself as PID 1 of new mount and PID namespaces.
+1. The process re-executes itself as PID 1 of new mount, PID, IPC, UTS and
+   cgroup namespaces, and of an empty network namespace unless `-share-net` is
+   given.
 2. It clones the target mount while that is still a peer of the host's shared
    mount, then makes every other mount a slave, so nothing mounted inside
    propagates out.
@@ -89,6 +91,7 @@ fuse-sandbox -target HOST:SANDBOX [flags] -- DAEMON [ARGS...]
   -bind HOST:SANDBOX     path to bind read-write, with its submounts (repeatable)
   -ro-bind HOST:SANDBOX  path to bind read-only, with its submounts (repeatable)
   -dev DEVICE            character device to bind at the same path (repeatable)
+  -share-net             keep the host's network, for daemons serving remote files
   -version               print the version and exit
 ```
 

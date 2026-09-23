@@ -37,6 +37,7 @@ func parse(args []string) (*sandbox.Config, error) {
 		cfg.Devices = append(cfg.Devices, v)
 		return nil
 	})
+	fs.BoolVar(&cfg.ShareNet, "share-net", false, "keep the host's network, for daemons serving remote files")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}

@@ -17,8 +17,8 @@ import (
 	"github.com/Ruakij/fuse-sandbox/internal/rootfs"
 )
 
-// Command returns a command that runs cfg's daemon as PID 1 of new mount and
-// PID namespaces. The caller sets its I/O and starts it; the daemon, and with it
+// Command returns a command that runs cfg's daemon as PID 1 of new mount, PID,
+// IPC, UTS, cgroup and, unless cfg.ShareNet, network namespaces. The caller sets its I/O and starts it; the daemon, and with it
 // the command, exits when its mount on the target is unmounted.
 func Command(cfg *Config) (*exec.Cmd, error) {
 	if err := cfg.Validate(); err != nil {
@@ -29,7 +29,11 @@ func Command(cfg *Config) (*exec.Cmd, error) {
 		return nil, err
 	}
 	cmd := exec.Command("/proc/self/exe", initArg, string(spec))
-	cmd.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNS | unix.CLONE_NEWPID}
+	flags := uintptr(unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWIPC | unix.CLONE_NEWUTS | unix.CLONE_NEWCGROUP)
+	if !cfg.ShareNet {
+		flags |= unix.CLONE_NEWNET
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Cloneflags: flags}
 	return cmd, nil
 }
 

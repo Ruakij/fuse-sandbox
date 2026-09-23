@@ -216,6 +216,25 @@ func TestBindsAreNoexec(t *testing.T) {
 	t.Error("no /data in the daemon's mountinfo")
 }
 
+func TestNamespaces(t *testing.T) {
+	for _, share := range []bool{false, true} {
+		var extra []string
+		if share {
+			extra = append(extra, "-share-net")
+		}
+		pid := newEnv(t).daemon(t, extra...)
+		for _, ns := range []string{"mnt", "pid", "ipc", "uts", "cgroup", "net"} {
+			host, err := os.Readlink("/proc/self/ns/" + ns)
+			must(t, err)
+			daemon, err := os.Readlink(fmt.Sprintf("/proc/%d/ns/%s", pid, ns))
+			must(t, err)
+			if want := !share || ns != "net"; (host != daemon) != want {
+				t.Errorf("share-net=%v: daemon has its own %s namespace: %v, want %v", share, ns, host != daemon, want)
+			}
+		}
+	}
+}
+
 func TestUnmountingTheTargetStopsTheSandbox(t *testing.T) {
 	e := newEnv(t)
 	exited := e.start(t)

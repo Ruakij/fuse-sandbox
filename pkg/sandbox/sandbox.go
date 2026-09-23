@@ -30,6 +30,9 @@ type Config struct {
 	Binds []Bind
 	// Devices are character devices bound at their own path, e.g. /dev/fuse.
 	Devices []string
+	// ShareNet keeps the host's network namespace, for daemons serving remote
+	// files such as sshfs or rclone. Otherwise the daemon's is empty.
+	ShareNet bool
 	// Command is the daemon and its arguments. The binary is bound at its own
 	// path with nothing else, so it must be static.
 	Command []string
