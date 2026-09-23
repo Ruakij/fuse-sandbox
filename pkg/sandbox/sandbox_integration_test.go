@@ -235,6 +235,32 @@ func TestNamespaces(t *testing.T) {
 	}
 }
 
+func TestPrivileges(t *testing.T) {
+	pid := newEnv(t).daemon(t)
+	var keep uint64
+	for _, c := range keptCaps {
+		keep |= 1 << c
+	}
+	want := map[string]string{
+		"CapInh": fmt.Sprintf("%016x", 0), "CapPrm": fmt.Sprintf("%016x", keep), "CapEff": fmt.Sprintf("%016x", keep),
+		"CapBnd": fmt.Sprintf("%016x", keep), "CapAmb": fmt.Sprintf("%016x", 0), "NoNewPrivs": "1",
+	}
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	must(t, err)
+	for _, l := range strings.Split(string(b), "\n") {
+		k, v, _ := strings.Cut(l, ":")
+		if w, ok := want[k]; ok {
+			if v = strings.TrimSpace(v); v != w {
+				t.Errorf("daemon %s = %s, want %s", k, v, w)
+			}
+			delete(want, k)
+		}
+	}
+	for k := range want {
+		t.Errorf("no %s in the daemon's status", k)
+	}
+}
+
 func TestUnmountingTheTargetStopsTheSandbox(t *testing.T) {
 	e := newEnv(t)
 	exited := e.start(t)

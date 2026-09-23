@@ -45,7 +45,10 @@ path propagating: the target.
    `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their
    files. The rest would let a daemon that follows a symlink into it read its own
    memory, environment and the host paths in its mountinfo.
-5. It execs the daemon, which becomes PID 1. Unmounting the target on the host
+5. It sets `no_new_privs`, cuts the capability bounding set to what a FUSE
+   daemon serving files as root uses (`CAP_SYS_ADMIN` to mount, the file
+   capabilities to act for callers of any uid) and execs the daemon, which
+   becomes PID 1. Unmounting the target on the host
    ends the daemon, and with it the sandbox.
 
 ## Requirements
@@ -62,9 +65,9 @@ path propagating: the target.
 ## Limits
 
 This contains a daemon that is tricked into reaching other paths. It is not a
-boundary against code execution in the daemon: the daemon keeps root and its
-capabilities, which it needs to mount FUSE, and a root process with
-`CAP_SYS_ADMIN` has ways out of a mount namespace.
+boundary against code execution in the daemon: the daemon keeps root and
+`CAP_SYS_ADMIN`, which it needs to mount FUSE, and a root process with it has
+ways out of a mount namespace.
 
 The daemon's open files, its stdio included, stay reachable through
 `/proc/self/fd`, so stdio should be pipes or `/dev/null`, not host files.

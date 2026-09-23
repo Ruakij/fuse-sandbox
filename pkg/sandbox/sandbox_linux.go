@@ -78,8 +78,19 @@ func Run(cfg *Config) (int, error) {
 	}
 }
 
+// keptCaps are what a FUSE daemon serving files as root uses: mounting, and
+// acting on files for callers of any uid.
+var keptCaps = []int{
+	unix.CAP_SYS_ADMIN, unix.CAP_CHOWN, unix.CAP_DAC_OVERRIDE, unix.CAP_DAC_READ_SEARCH,
+	unix.CAP_FOWNER, unix.CAP_FSETID, unix.CAP_SETUID, unix.CAP_SETGID, unix.CAP_SETFCAP,
+	unix.CAP_MKNOD, unix.CAP_LINUX_IMMUTABLE, unix.CAP_LEASE, unix.CAP_SYS_RESOURCE, unix.CAP_SYS_NICE,
+}
+
 // enter builds the root and execs the daemon in it. It only returns on failure.
 func enter(cfg *Config) error {
+	// Capabilities and no_new_privs are per thread, and exec takes them from the
+	// calling one.
+	runtime.LockOSThread()
 	var mounts []rootfs.Mount
 	for _, b := range cfg.Binds {
 		attr := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV | unix.MOUNT_ATTR_NOEXEC)
@@ -99,5 +110,39 @@ func enter(cfg *Config) error {
 	if err := rootfs.Enter(cfg.Target.Host, cfg.Target.Sandbox, mounts); err != nil {
 		return err
 	}
+	if err := dropPrivileges(); err != nil {
+		return err
+	}
 	return syscall.Exec(cfg.Command[0], cfg.Command, os.Environ())
+}
+
+// dropPrivileges bounds the daemon to keptCaps, which root gets all of on exec,
+// and keeps it from gaining any more through a later exec.
+func dropPrivileges() error {
+	var keep uint64
+	for _, c := range keptCaps {
+		keep |= 1 << c
+	}
+	for c := 0; c < 64; c++ {
+		if keep&(1<<c) != 0 {
+			continue
+		}
+		err := unix.Prctl(unix.PR_CAPBSET_DROP, uintptr(c), 0, 0, 0)
+		if errors.Is(err, unix.EINVAL) {
+			break // past the kernel's last capability
+		}
+		if err != nil {
+			return fmt.Errorf("drop capability %d: %w", c, err)
+		}
+	}
+	hdr := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	var data [2]unix.CapUserData
+	if err := unix.Capget(&hdr, &data[0]); err != nil {
+		return fmt.Errorf("capget: %w", err)
+	}
+	data[0].Inheritable, data[1].Inheritable = 0, 0
+	if err := unix.Capset(&hdr, &data[0]); err != nil {
+		return fmt.Errorf("clear inheritable capabilities: %w", err)
+	}
+	return unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
 }
