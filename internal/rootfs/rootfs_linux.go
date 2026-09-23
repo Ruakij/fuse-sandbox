@@ -28,8 +28,8 @@ type attach struct {
 }
 
 // Enter pivots the calling process, which must be alone in its mount namespace,
-// into a new read-only root that holds the target, the mounts and a proc of the
-// caller's PID namespace. Only the target keeps propagating to the host.
+// into a new read-only root that holds the target, the mounts and the caller's
+// /proc/self/fd. Only the target keeps propagating to the host.
 func Enter(targetHost, targetDst string, mounts []Mount) error {
 	// Cloned before propagation is cut, so it stays a peer of the host's mount and
 	// whatever gets mounted on it propagates out.
@@ -51,11 +51,7 @@ func Enter(targetHost, targetDst string, mounts []Mount) error {
 		}
 		attached = append(attached, attach{fd, m.Dst})
 	}
-	proc, err := newFS("proc", map[string]string{"subset": "pid"}, unix.MOUNT_ATTR_NOSUID|unix.MOUNT_ATTR_NODEV|unix.MOUNT_ATTR_NOEXEC)
-	if err != nil {
-		return err
-	}
-	return enterNewRoot(append(attached, attach{proc, "/proc"}))
+	return enterNewRoot(attached)
 }
 
 func clone(m Mount) (int, error) {
@@ -143,6 +139,9 @@ func enterNewRoot(mounts []attach) error {
 		return fmt.Errorf("enter new root: %w", err)
 	}
 
+	if err := attachProcFD(); err != nil {
+		return err
+	}
 	for _, m := range mounts {
 		if err := attachAt(m.fd, m.dst[1:]); err != nil {
 			return err
@@ -159,6 +158,36 @@ func enterNewRoot(mounts []attach) error {
 		return err
 	}
 	return unix.MountSetattr(unix.AT_FDCWD, "/", 0, &unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY})
+}
+
+// attachProcFD gives the new root /proc/self/fd, which daemons like mergerfs
+// need to reopen their own files, and nothing else of proc: through the rest, a
+// daemon tricked into following a symlink would read its own memory and
+// environment, or the host paths in its mountinfo. Must run as PID 1 of a new PID
+// namespace, which exec keeps, so self stays the daemon.
+func attachProcFD() error {
+	proc, err := newFS("proc", map[string]string{"subset": "pid"},
+		unix.MOUNT_ATTR_RDONLY|unix.MOUNT_ATTR_NOSUID|unix.MOUNT_ATTR_NODEV|unix.MOUNT_ATTR_NOEXEC)
+	if err != nil {
+		return err
+	}
+	// Attached for a moment, as kernels before 6.15 clone only from mounts in
+	// the caller's namespace.
+	const tmp = "proc-full"
+	if err := attachAt(proc, tmp); err != nil {
+		return err
+	}
+	fd, err := unix.OpenTree(unix.AT_FDCWD, tmp+"/self/fd", unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC)
+	if err != nil {
+		return fmt.Errorf("clone /proc/self/fd: %w", err)
+	}
+	if err := unix.Unmount(tmp, unix.MNT_DETACH); err != nil {
+		return fmt.Errorf("detach proc: %w", err)
+	}
+	if err := os.Remove(tmp); err != nil {
+		return err
+	}
+	return attachAt(fd, "proc/self/fd")
 }
 
 // attachAt creates a mountpoint of the tree's type at rel, relative to the new

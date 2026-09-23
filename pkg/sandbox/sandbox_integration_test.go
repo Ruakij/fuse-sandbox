@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -170,13 +169,11 @@ func TestSandboxHoldsOnlyWhatIsBound(t *testing.T) {
 	}
 	wantContent(t, filepath.Join(e.target, "data", "file"), "data")
 
-	// Only the daemon's own processes, and none of procfs's system-wide files.
-	for _, n := range names(t, filepath.Join(e.target, "proc")) {
-		if _, err := strconv.Atoi(n); err != nil && n != "self" && n != "thread-self" {
-			t.Errorf("sandbox /proc has %q", n)
-		} else if err == nil && n != "1" {
-			t.Errorf("sandbox /proc shows pid %s, want only the daemon as 1", n)
-		}
+	if got := names(t, filepath.Join(e.target, "proc")); !slices.Equal(got, []string{"self"}) {
+		t.Errorf("sandbox /proc = %v, want only self", got)
+	}
+	if got := names(t, filepath.Join(e.target, "proc", "self")); !slices.Equal(got, []string{"fd"}) {
+		t.Errorf("sandbox /proc/self = %v, want only fd", got)
 	}
 }
 

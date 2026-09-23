@@ -13,8 +13,7 @@ fuse-sandbox \
 ```
 
 The daemon sees `/a`, `/b`, `/mnt`, `/dev/fuse`, `/dev/null`, its own binary and
-a `/proc` with only itself in it. Its mount on `/mnt` appears at
-`/var/lib/app/mnt`.
+`/proc/self/fd`. Its mount on `/mnt` appears at `/var/lib/app/mnt`.
 
 ## Why
 
@@ -39,8 +38,11 @@ path propagating: the target.
    cloned from that file descriptor, so what gets bound is the inode that was
    checked, not whatever the path points at a moment later. Binds are
    `nosuid,nodev` and recursive, and later host submounts still propagate in.
-4. An empty tmpfs becomes the new root with the clones and a `proc` mounted with
-   `subset=pid` attached, and is made read-only after `pivot_root`.
+4. An empty tmpfs becomes the new root with the clones attached, and is made
+   read-only after `pivot_root`. Of `proc` it holds only the daemon's own
+   `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their
+   files. The rest would let a daemon that follows a symlink into it read its own
+   memory, environment and the host paths in its mountinfo.
 5. It execs the daemon, which becomes PID 1. Unmounting the target on the host
    ends the daemon, and with it the sandbox.
 
@@ -61,6 +63,9 @@ This contains a daemon that is tricked into reaching other paths. It is not a
 boundary against code execution in the daemon: the daemon keeps root and its
 capabilities, which it needs to mount FUSE, and a root process with
 `CAP_SYS_ADMIN` has ways out of a mount namespace.
+
+The daemon's open files, its stdio included, stay reachable through
+`/proc/self/fd`, so stdio should be pipes or `/dev/null`, not host files.
 
 ## Install
 
