@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -116,6 +117,10 @@ func (c *Config) Validate() error {
 	for i, a := range dsts {
 		if a == "/" {
 			return errors.New("nothing may be bound over the sandbox root")
+		}
+		// The sandbox root is a tmpfs, so these are its limits whatever the host's.
+		if len(a) >= 4096 || slices.ContainsFunc(strings.Split(a, "/"), func(n string) bool { return len(n) > 255 }) {
+			return fmt.Errorf("sandbox path %.64q... is too long", a)
 		}
 		for _, b := range dsts[i+1:] {
 			if under(a, b) || under(b, a) {
