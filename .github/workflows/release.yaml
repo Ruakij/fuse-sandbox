@@ -20,7 +20,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make dist VERSION=${{ github.ref_name }}
-      - uses: actions/attest-build-provenance@v3
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/fuse-sandbox-*
       - name: Create the GitHub release
