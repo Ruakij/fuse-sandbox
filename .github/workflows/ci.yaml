@@ -30,6 +30,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: gofmt -l cmd internal pkg test | tee /dev/stderr | (! read)
+      - run: go mod tidy -diff
       - run: go vet ./...
       - name: go vet (mount tests)
         run: go vet -tags mounttest ./...

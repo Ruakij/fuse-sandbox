@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+go mod tidy -diff
+
 files=$(git diff --cached --name-only --diff-filter=ACM -- '*.go')
 [ -n "$files" ] || exit 0
 pkgs=$(echo "$files" | xargs -n1 dirname | sort -u | sed 's|^|./|')
