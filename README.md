@@ -130,6 +130,8 @@ the command line tool.
 git config core.hooksPath .githooks  # gofmt, vet, tests and lint before each commit
 make build       # bin/fuse-sandbox
 make test-mount  # real sandboxes in a privileged container, needs Docker
+make fuzz        # command lines, FUZZTIME=30s by default
+make fuzz-mount  # bind layouts through real sandboxes, like test-mount
 make dist        # release binaries and SHA256SUMS
 ```
 
