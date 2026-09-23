@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,6 +87,12 @@ func (e *env) daemon(t *testing.T, extra ...string) int {
 	t.Helper()
 	cmd := exec.Command(sandboxBin, e.args(extra...)...)
 	startMounted(t, cmd, e.target)
+	return childOf(t, cmd.Process.Pid)
+}
+
+// childOf returns the pid of the sandbox's daemon, its only child.
+func childOf(t *testing.T, sandbox int) int {
+	t.Helper()
 	ents, err := os.ReadDir("/proc")
 	must(t, err)
 	for _, d := range ents {
@@ -93,13 +100,54 @@ func (e *env) daemon(t *testing.T, extra ...string) int {
 		if err != nil {
 			continue
 		}
-		if f := strings.Fields(string(b[bytes.LastIndexByte(b, ')')+1:])); f[1] == strconv.Itoa(cmd.Process.Pid) {
+		if f := strings.Fields(string(b[bytes.LastIndexByte(b, ')')+1:])); f[1] == strconv.Itoa(sandbox) {
 			pid, _ := strconv.Atoi(d.Name())
 			return pid
 		}
 	}
 	t.Fatal("no daemon among the sandbox's children")
 	return 0
+}
+
+// wantOwnFDs fails if the daemon holds a file from outside the sandbox other
+// than its stdio: /proc/self/fd would open it for the daemon.
+func wantOwnFDs(t *testing.T, pid int) {
+	t.Helper()
+	dir := fmt.Sprintf("/proc/%d/", pid)
+	b, err := os.ReadFile(dir + "mountinfo")
+	must(t, err)
+	mounts := map[string]bool{}
+	for _, l := range strings.Split(string(b), "\n") {
+		if f := strings.Fields(l); len(f) > 0 {
+			mounts[f[0]] = true
+		}
+	}
+	ents, err := os.ReadDir(dir + "fd")
+	must(t, err)
+	for _, ent := range ents {
+		if n, _ := strconv.Atoi(ent.Name()); n < 3 {
+			continue
+		}
+		link, err := os.Readlink(dir + "fd/" + ent.Name())
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // closed meanwhile
+		}
+		must(t, err)
+		info, err := os.ReadFile(dir + "fdinfo/" + ent.Name())
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		must(t, err)
+		// Pipes, sockets and anonymous inodes lead nowhere.
+		if !strings.HasPrefix(link, "/") {
+			continue
+		}
+		for _, l := range strings.Split(string(info), "\n") {
+			if id, ok := strings.CutPrefix(l, "mnt_id:"); ok && !mounts[strings.TrimSpace(id)] {
+				t.Errorf("daemon holds fd %s on %s, outside the sandbox", ent.Name(), link)
+			}
+		}
+	}
 }
 
 func startMounted(t *testing.T, cmd *exec.Cmd, target string) <-chan struct{} {
@@ -226,6 +274,17 @@ func TestBindsAreNoexec(t *testing.T) {
 		}
 	}
 	t.Error("no /data in the daemon's mountinfo")
+}
+
+func TestInheritedFDsStayOut(t *testing.T) {
+	e := newEnv(t)
+	secret, err := os.Open(e.secret)
+	must(t, err)
+	defer secret.Close()
+	cmd := exec.Command(sandboxBin, e.args()...)
+	cmd.ExtraFiles = []*os.File{secret}
+	startMounted(t, cmd, e.target)
+	wantOwnFDs(t, childOf(t, cmd.Process.Pid))
 }
 
 func TestNamespaces(t *testing.T) {

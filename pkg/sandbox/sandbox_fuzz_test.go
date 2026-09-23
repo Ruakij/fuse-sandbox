@@ -21,7 +21,8 @@ import (
 // path, and newline-separated sandbox paths, each bound from the host path its
 // pick selects, read-only if the pick's high bit is set. The daemon must see
 // exactly what is bound, submounts included, and never the secret beside it, and
-// a refused host path must leave nothing mounted.
+// a refused host path must leave nothing mounted. It holds no file the sandbox
+// inherited.
 func FuzzSandbox(f *testing.F) {
 	f.Add("/t", "/data", []byte{0})
 	f.Add("/x/t", "/data\n/x/file\n/dev/sub", []byte{0x80, 1, 0x82})
@@ -74,6 +75,11 @@ func FuzzSandbox(f *testing.F) {
 		if err != nil {
 			return
 		}
+		// Whatever the sandbox inherits must stay outside it.
+		secret, err := os.Open(e.secret)
+		must(t, err)
+		defer secret.Close()
+		cmd.ExtraFiles = []*os.File{secret}
 
 		// Where a mount leaking out of the sandbox would land: on a host path it
 		// takes in. Other fuzz workers mount on none of these.
@@ -93,6 +99,7 @@ func FuzzSandbox(f *testing.F) {
 		if refused {
 			return
 		}
+		wantOwnFDs(t, cmd.Process.Pid)
 
 		want := []string{"dev", "proc", strings.Split(target, "/")[1], strings.Split(loopfsBin, "/")[1]}
 		for _, b := range cfg.Binds {
@@ -132,7 +139,8 @@ func FuzzSandbox(f *testing.F) {
 			if err != nil {
 				return err
 			}
-			// The target is the daemon's own mount, and proc holds only its fds.
+			// The target is the daemon's own mount, and proc holds only its fds,
+			// which wantOwnFDs checks.
 			if p == filepath.Join(e.target, target) || p == filepath.Join(e.target, "proc") {
 				return fs.SkipDir
 			}

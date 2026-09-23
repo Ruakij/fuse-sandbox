@@ -112,6 +112,11 @@ func enter(cfg *Config) error {
 	if err := dropPrivileges(); err != nil {
 		return err
 	}
+	// Go passes on the fds a process inherits, and through /proc/self/fd each
+	// would lead the daemon out of the sandbox.
+	if err := unix.CloseRange(3, ^uint(0), unix.CLOSE_RANGE_CLOEXEC); err != nil {
+		return fmt.Errorf("close inherited fds: %w", err)
+	}
 	return syscall.Exec(cfg.Command[0], cfg.Command, os.Environ())
 }
 

@@ -47,9 +47,9 @@ path propagating: the target.
    memory, environment and the host paths in its mountinfo.
 5. It sets `no_new_privs`, cuts the capability bounding set to what a FUSE
    daemon serving files as root uses (`CAP_SYS_ADMIN` to mount, the file
-   capabilities to act for callers of any uid) and execs the daemon, which
-   becomes PID 1. Unmounting the target on the host
-   ends the daemon, and with it the sandbox.
+   capabilities to act for callers of any uid), closes every inherited file
+   descriptor but stdio and execs the daemon, which becomes PID 1. Unmounting
+   the target on the host ends the daemon, and with it the sandbox.
 
 ## Requirements
 
@@ -69,8 +69,9 @@ boundary against code execution in the daemon: the daemon keeps root and
 `CAP_SYS_ADMIN`, which it needs to mount FUSE, and a root process with it has
 ways out of a mount namespace.
 
-The daemon's open files, its stdio included, stay reachable through
-`/proc/self/fd`, so stdio should be pipes or `/dev/null`, not host files.
+Of the files fuse-sandbox inherits, only stdio reaches the daemon, and it stays
+reachable through `/proc/self/fd`, so stdio should be pipes or `/dev/null`, not
+host files.
 
 ## Install
 
@@ -121,8 +122,8 @@ func main() {
 ```
 
 `Command` leaves the daemon's lifetime to the caller: it survives the caller
-unless `cmd.SysProcAttr.Pdeathsig` is set. `Run` is the foreground behaviour of
-the command line tool.
+unless `cmd.SysProcAttr.Pdeathsig` is set. `cmd.ExtraFiles` do not reach the
+daemon. `Run` is the foreground behaviour of the command line tool.
 
 ## Development
 
