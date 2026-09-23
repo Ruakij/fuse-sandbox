@@ -49,12 +49,7 @@ path propagating: the target.
 5. It closes every inherited file descriptor but stdio and starts the daemon,
    which sets `no_new_privs`, cuts its capability bounding set to what a FUSE
    daemon serving files as root uses (the file capabilities to act for callers
-   of any uid, not `CAP_SYS_ADMIN`), installs a seccomp filter, and execs.
-   The filter refuses what a FUSE daemon has no use for and what opens the
-   kernel to it: mounting, namespaces (`unshare`, `setns`, `clone` with
-   namespace flags), `ptrace`, `bpf`, modules, keyrings, `perf_event_open`,
-   `userfaultfd`, `io_uring` and `open_by_handle_at`. `clone3` reports ENOSYS,
-   so libc and Go fall back to `clone`. Syscalls of another ABI kill it.
+   of any uid, not `CAP_SYS_ADMIN`), and execs.
 6. The daemon cannot mount, so it falls back to `fusermount3`, as libfuse,
    go-fuse and bazil.org/fuse do. That is fuse-sandbox, which asks the
    supervisor over `/run/fuse-sandbox.sock`. The supervisor mounts FUSE only on
@@ -86,7 +81,7 @@ This contains a daemon that is tricked into reaching other paths. Against code
 execution in the daemon it is a boundary of namespaces and capabilities, not of
 users: the daemon stays root without `CAP_SYS_ADMIN`, so it cannot mount, but
 it can plant setuid files in what is bound read-write, and it shares the host
-kernel, if behind a seccomp filter that allows all but the syscalls above. FUSE passthrough, which needs `CAP_SYS_ADMIN`, is not available.
+kernel. FUSE passthrough, which needs `CAP_SYS_ADMIN`, is not available.
 
 Of the files fuse-sandbox inherits, only stdio reaches the daemon, and it stays
 reachable through `/proc/self/fd`, so stdio should be pipes or `/dev/null`, not

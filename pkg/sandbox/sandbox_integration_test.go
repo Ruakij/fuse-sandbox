@@ -328,7 +328,7 @@ func TestPrivileges(t *testing.T) {
 	}
 	want := map[string]string{
 		"CapInh": fmt.Sprintf("%016x", 0), "CapPrm": fmt.Sprintf("%016x", keep), "CapEff": fmt.Sprintf("%016x", keep),
-		"CapBnd": fmt.Sprintf("%016x", keep), "CapAmb": fmt.Sprintf("%016x", 0), "NoNewPrivs": "1", "Seccomp": "2",
+		"CapBnd": fmt.Sprintf("%016x", keep), "CapAmb": fmt.Sprintf("%016x", 0), "NoNewPrivs": "1",
 	}
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
 	must(t, err)

@@ -216,9 +216,6 @@ func execDaemon(cfg *Config) error {
 	if err := dropPrivileges(); err != nil {
 		return err
 	}
-	if err := installSeccomp(); err != nil {
-		return err
-	}
 	return syscall.Exec(cfg.Command[0], cfg.Command, os.Environ())
 }
 
