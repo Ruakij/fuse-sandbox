@@ -1,5 +1,8 @@
 # fuse-sandbox
 
+[![Linux](https://img.shields.io/badge/Linux-5.12%2B-FCC624?logo=linux&logoColor=black)](#requirements)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Ruakij/fuse-sandbox/pkg/sandbox.svg)](https://pkg.go.dev/github.com/Ruakij/fuse-sandbox/pkg/sandbox)
+
 Runs a FUSE daemon in an empty root that holds only the paths bound into it.
 The daemon's mount still shows up on the host; nothing else it could reach
 exists outside the sandbox.
@@ -36,29 +39,6 @@ Kubernetes, though, a mount only propagates out of a pod with
 host device, every capability, no seccomp or AppArmor. fuse-sandbox runs inside
 such a pod and gives the daemon back an empty root. It also needs no runtime,
 for a mount tied to one process, such as a systemd unit.
-
-## How it works
-
-1. The process re-executes itself as PID 1 of new mount, PID, IPC, UTS and
-   cgroup namespaces, and of an empty network namespace unless `-share-net` is
-   given.
-2. It clones the target mount while that is still a peer of the host's shared
-   mount, then makes every other mount a slave, so nothing mounted inside
-   propagates out.
-3. Each host path is opened with `openat2(RESOLVE_NO_SYMLINKS)` and the mount is
-   cloned from that file descriptor, so what gets bound is the inode that was
-   checked, not whatever the path points at a moment later. Binds are
-   `nosuid,nodev` and recursive, and later host submounts still propagate in.
-4. An empty tmpfs becomes the new root with the clones attached, and is made
-   read-only after `pivot_root`. Of `proc` it holds only the daemon's own
-   `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their
-   files, and with `-mountinfo` its `/proc/self/mountinfo`. The rest would let a
-   daemon that follows a symlink into it read its own memory and environment.
-5. It sets `no_new_privs`, cuts the capability bounding set to what a FUSE
-   daemon serving files as root uses (`CAP_SYS_ADMIN` to mount, the file
-   capabilities to act for callers of any uid), closes every inherited file
-   descriptor but stdio and execs the daemon, which becomes PID 1. Unmounting
-   the target on the host ends the daemon, and with it the sandbox.
 
 ## Requirements
 
@@ -155,6 +135,29 @@ func main() {
 `Command` leaves the daemon's lifetime to the caller: it survives the caller
 unless `cmd.SysProcAttr.Pdeathsig` is set. `cmd.ExtraFiles` do not reach the
 daemon; `cmd.Env` becomes its environment. `Run` is the foreground behaviour of the command line tool.
+
+## How it works
+
+1. The process re-executes itself as PID 1 of new mount, PID, IPC, UTS and
+   cgroup namespaces, and of an empty network namespace unless `-share-net` is
+   given.
+2. It clones the target mount while that is still a peer of the host's shared
+   mount, then makes every other mount a slave, so nothing mounted inside
+   propagates out.
+3. Each host path is opened with `openat2(RESOLVE_NO_SYMLINKS)` and the mount is
+   cloned from that file descriptor, so what gets bound is the inode that was
+   checked, not whatever the path points at a moment later. Binds are
+   `nosuid,nodev` and recursive, and later host submounts still propagate in.
+4. An empty tmpfs becomes the new root with the clones attached, and is made
+   read-only after `pivot_root`. Of `proc` it holds only the daemon's own
+   `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their
+   files, and with `-mountinfo` its `/proc/self/mountinfo`. The rest would let a
+   daemon that follows a symlink into it read its own memory and environment.
+5. It sets `no_new_privs`, cuts the capability bounding set to what a FUSE
+   daemon serving files as root uses (`CAP_SYS_ADMIN` to mount, the file
+   capabilities to act for callers of any uid), closes every inherited file
+   descriptor but stdio and execs the daemon, which becomes PID 1. Unmounting
+   the target on the host ends the daemon, and with it the sandbox.
 
 ## Development
 
