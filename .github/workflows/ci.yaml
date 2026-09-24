@@ -2,10 +2,9 @@ name: ci
 
 on:
   push:
-    # automation/** is here because upstream-sync pushes those branches over SSH.
-    # A PR it opens cannot fire pull_request, but the push can, and the checks
-    # land on the same commit either way.
-    branches: [main, "automation/**"]
+    branches: ["**"]
+  # The push of a branch in this repo already ran CI on the PR's commit, so
+  # pull_request only runs jobs for PRs from forks.
   pull_request:
   # A CVE published after a merge is still our problem, so rescan daily.
   schedule:
@@ -23,6 +22,7 @@ concurrency:
 
 jobs:
   go:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -48,7 +48,7 @@ jobs:
   fuzz:
     runs-on: ubuntu-latest
     # Fuzzing unchanged code finds less each time; the daily run is for CVEs.
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -69,6 +69,7 @@ jobs:
           path: "**/testdata/fuzz/"
 
   security:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -93,6 +94,7 @@ jobs:
   # Real sandboxes around a real FUSE daemon. The runner is a VM with its own
   # kernel, so a privileged container is enough; no nested VM is involved.
   mount:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -102,7 +104,7 @@ jobs:
   fuzz-mount:
     runs-on: ubuntu-latest
     # Fuzzing unchanged code finds less each time; the daily run is for CVEs.
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     steps:
       - uses: actions/checkout@v7
       - run: test -c /dev/fuse || (echo "runner has no /dev/fuse" >&2; exit 1)
@@ -121,6 +123,7 @@ jobs:
           path: "**/testdata/fuzz/"
 
   image:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
