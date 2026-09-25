@@ -1,10 +1,11 @@
 # The golangci-lint version lives in hack/golangci-lint.version, which Dependabot
 # cannot parse. This bumps it and opens a PR.
 #
-# AUTOMATION_SSH_KEY is an optional repository secret holding the private half of a
-# deploy key with write access. With it, the branch is pushed over SSH rather than as
-# GITHUB_TOKEN, which is what lets ci.yaml run on the automation/** push. Without it
-# checkout falls back to the token and the PR opens with no checks.
+# Events caused by GITHUB_TOKEN start no workflows. AUTOMATION_SSH_KEY is an optional
+# repository secret holding the private half of a deploy key with write access; the
+# branch is pushed over SSH with it, so pushes to an open PR run ci.yaml. Opening the PR
+# is still a GITHUB_TOKEN event, so a new PR gets its checks from a dispatched run on
+# its branch, as workflow_dispatch is the exception to that rule.
 name: upstream-sync
 
 on:
@@ -15,6 +16,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   golangci-lint:
@@ -50,9 +52,9 @@ jobs:
           version: ${{ steps.detect.outputs.latest }}
 
       - if: steps.detect.outputs.changed == 'true'
+        id: pr
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.AUTOMATION_PR_TOKEN != '' && secrets.AUTOMATION_PR_TOKEN || github.token }}
           branch: automation/golangci-lint-version-sync
           delete-branch: true
           commit-message: "Bump golangci-lint to ${{ steps.detect.outputs.latest }}"
@@ -66,3 +68,8 @@ jobs:
             Result of running the new version against the tree: `${{ steps.lint.outcome }}`.
             A failure here is expected when a release adds checks; the findings are in the
             job log of the run that opened this PR.
+
+      - if: steps.pr.outputs.pull-request-operation == 'created'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yaml --ref automation/golangci-lint-version-sync
