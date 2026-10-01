@@ -18,6 +18,9 @@ type Mount struct {
 	Recursive bool
 	// Attr is a set of unix.MOUNT_ATTR_* flags.
 	Attr uint64
+	// Propagation is unix.MS_PRIVATE to cut propagation into the clone, or 0 to
+	// keep what the host mount has.
+	Propagation uint64
 	// Device requires Host to be a character device, and forbids one otherwise.
 	Device bool
 }
@@ -38,8 +41,8 @@ func Enter(targetHost, targetDst string, mounts []Mount, procSelf []string) erro
 	if err != nil {
 		return err
 	}
-	// Host mounts still propagate in, so recursive mounts pick up later
-	// submounts, but nothing mounted in here propagates out.
+	// The target keeps its peer group; every other mount becomes a slave, so
+	// nothing mounted in here propagates out.
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_SLAVE, ""); err != nil {
 		return fmt.Errorf("make / rslave: %w", err)
 	}
@@ -71,7 +74,8 @@ func clone(m Mount) (int, error) {
 	if m.Recursive {
 		flags |= unix.AT_RECURSIVE
 	}
-	if err := unix.MountSetattr(fd, "", uint(flags), &unix.MountAttr{Attr_set: m.Attr}); err != nil {
+	attr := unix.MountAttr{Attr_set: m.Attr, Propagation: m.Propagation}
+	if err := unix.MountSetattr(fd, "", uint(flags), &attr); err != nil {
 		return -1, fmt.Errorf("set mount attributes on %s: %w", m.Host, err)
 	}
 	return fd, nil

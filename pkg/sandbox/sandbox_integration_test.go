@@ -377,16 +377,37 @@ func TestBindStaysOnTheCheckedDirectory(t *testing.T) {
 	wantContent(t, filepath.Join(e.target, "data", "file"), "data")
 }
 
-func TestHostSubmountsPropagateIn(t *testing.T) {
-	e := newEnv(t)
-	e.start(t, "-bind", e.data+":/data")
+// TestBindsTakeNoSubmounts checks the pair the bind policy rests on: a mount
+// appearing under a bind's source on the host stays outside the sandbox, at
+// every depth and whether the bind is writable or read-only, while the target
+// still propagates the daemon's mount out to the host.
+func TestBindsTakeNoSubmounts(t *testing.T) {
+	for _, flag := range []string{"-bind", "-ro-bind"} {
+		t.Run(flag, func(t *testing.T) {
+			e := newEnv(t)
+			sub := filepath.Join(e.data, "sub")
+			// Present when the bind is cloned, so its own propagation must be cut too.
+			must(t, unix.Mount("early", sub, "tmpfs", 0, ""))
+			t.Cleanup(func() { _ = unix.Unmount(sub, unix.MNT_DETACH) })
+			e.start(t, flag, e.data+":/data")
+			// start waits for the daemon's mount at the host path of the target.
+			if !isFUSE(e.target) {
+				t.Fatal("the daemon's mount did not propagate out to the target")
+			}
 
-	sub := filepath.Join(e.data, "sub")
-	must(t, unix.Mount("late", sub, "tmpfs", 0, ""))
-	t.Cleanup(func() { _ = unix.Unmount(sub, unix.MNT_DETACH) })
-	must(t, os.WriteFile(filepath.Join(sub, "late"), []byte("late"), 0o644))
+			deeper := filepath.Join(sub, "deeper")
+			must(t, os.Mkdir(deeper, 0o755))
+			must(t, unix.Mount("late", deeper, "tmpfs", 0, ""))
+			t.Cleanup(func() { _ = unix.Unmount(deeper, unix.MNT_DETACH) })
+			must(t, os.WriteFile(filepath.Join(deeper, "late"), []byte("late"), 0o644))
 
-	wantContent(t, filepath.Join(e.target, "data", "sub", "late"), "late")
+			inside := filepath.Join(e.target, "data", "sub", "deeper", "late")
+			if _, err := os.Stat(inside); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("stat %s = %v, want the host mount to stay outside the bind", inside, err)
+			}
+			wantContent(t, filepath.Join(e.target, "data", "file"), "data")
+		})
+	}
 }
 
 func TestReadOnlyBind(t *testing.T) {

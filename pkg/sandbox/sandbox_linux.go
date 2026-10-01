@@ -98,7 +98,14 @@ func enter(cfg *Config) error {
 		if b.ReadOnly {
 			attr |= unix.MOUNT_ATTR_RDONLY
 		}
-		mounts = append(mounts, rootfs.Mount{Host: b.Host, Dst: b.Sandbox, Recursive: true, Attr: attr})
+		// A mount propagating in arrives with the host's attributes, so a read-only
+		// bind would gain a writable submount. Every bind is private instead, so the
+		// attributes set here hold for the whole subtree: a bind is a point-in-time
+		// view, and a caller that needs a replaced source rebuilds the sandbox.
+		mounts = append(mounts, rootfs.Mount{
+			Host: b.Host, Dst: b.Sandbox, Recursive: true,
+			Attr: attr, Propagation: unix.MS_PRIVATE,
+		})
 	}
 	for _, d := range append(cfg.Devices, defaultDevices...) {
 		mounts = append(mounts, rootfs.Mount{Host: d, Dst: d, Attr: unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NOEXEC, Device: true})

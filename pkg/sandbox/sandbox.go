@@ -20,7 +20,12 @@ import (
 // Bind maps a host path to a path inside the sandbox.
 type Bind struct {
 	Host, Sandbox string
-	ReadOnly      bool
+	// ReadOnly binds the path read-only, so a path the daemon is steered into
+	// writing, such as the target of a symlink in the content it serves, answers
+	// EROFS. It is not a boundary against a daemon running attacker code: that
+	// daemon keeps CAP_SYS_ADMIN in the initial user namespace, which clears the
+	// attribute.
+	ReadOnly bool
 }
 
 // Config describes a sandbox. All paths must be absolute, clean and free of
@@ -29,7 +34,10 @@ type Config struct {
 	// Target is where the daemon mounts. The host side must be on a shared
 	// mount, or the daemon's mount does not propagate out.
 	Target Bind
-	// Binds are the only host paths the daemon can reach, with their submounts.
+	// Binds are the only host paths the daemon can reach, with the submounts they
+	// have when the sandbox is built. Each is a point-in-time view: what the host
+	// mounts or unmounts under a source afterwards stays outside, and a caller
+	// that needs the change rebuilds the sandbox.
 	Binds []Bind
 	// Devices are character devices bound at their own path, e.g. /dev/fuse.
 	Devices []string

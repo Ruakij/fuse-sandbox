@@ -63,6 +63,24 @@ boundary against code execution in the daemon: the daemon keeps root and
 `CAP_SYS_ADMIN`, which it needs to mount FUSE, and a root process with it has
 ways out of a mount namespace.
 
+`-ro-bind` holds against the same threat and no more. `CAP_SYS_ADMIN` in the
+initial user namespace covers `mount_setattr`, so a daemon running attacker code
+clears `MOUNT_ATTR_RDONLY` off its own bind in one syscall and writes through it.
+What the attribute does cover is the daemon being steered by content: a symlink
+planted in a writable bind that points at a read-only one is resolved inside the
+sandbox, and the write it leads to answers EROFS.
+
+A bind is a view of the host as it was when the sandbox was built. What the host
+mounts or unmounts under a source afterwards is invisible inside, by design: the
+attributes a bind is cloned with are what it keeps. A caller that has to follow
+such a change watches for it and rebuilds the sandbox; union-csi-driver's
+reconcile loop remounts the union for this.
+
+The target is the one path that reaches out, and it reaches out for anything the
+daemon mounts, not only its FUSE filesystem: the cloned target is a peer of the
+host's mount, so a mount the daemon makes on or under the target appears on the
+host there.
+
 Of the files fuse-sandbox inherits, only stdio reaches the daemon, and it stays
 reachable through `/proc/self/fd`, so stdio should be pipes or `/dev/null`, not
 host files.
@@ -147,7 +165,10 @@ daemon; `cmd.Env` becomes its environment. `Run` is the foreground behaviour of 
 3. Each host path is opened with `openat2(RESOLVE_NO_SYMLINKS)` and the mount is
    cloned from that file descriptor, so what gets bound is the inode that was
    checked, not whatever the path points at a moment later. Binds are
-   `nosuid,nodev` and recursive, and later host submounts still propagate in.
+   `nosuid,nodev`, recursive and private, so the attributes they are cloned with
+   hold for the whole subtree: a mount the host makes under a source afterwards
+   stays outside, rather than arriving with the host's attributes and leaving a
+   writable path inside a `-ro-bind`.
 4. An empty tmpfs becomes the new root with the clones attached, and is made
    read-only after `pivot_root`. Of `proc` it holds only the daemon's own
    `/proc/self/fd`, read-only, which daemons like mergerfs need to reopen their
